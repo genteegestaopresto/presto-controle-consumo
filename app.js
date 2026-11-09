@@ -6,7 +6,7 @@
    ========================================================================== */
 'use strict';
 
-const VERSAO_APP = '1.6.0';
+const VERSAO_APP = '1.7.0';
 
 // Limites padrão (usados só até a primeira sincronização; depois valem os da aba CONFIGURACOES)
 const PRODUTOS_PADRAO = [
@@ -23,6 +23,12 @@ const TIPO_NOME = { COLABORADOR: 'Colaborador', CONVIDADO: 'Convidado' };
 
 /* ---------- Utilidades ---------- */
 const $ = (s) => document.querySelector(s);
+/** Liga um evento só se o elemento existir (evita travar o app se um arquivo estiver desatualizado). */
+function on(sel, evento, fn) {
+  const el = document.querySelector(sel);
+  if (el) el.addEventListener(evento, fn);
+  else console.warn('Elemento não encontrado: ' + sel + ' (index.html desatualizado?)');
+}
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
 const pad3 = (n) => String(n).padStart(3, '0');
@@ -57,6 +63,9 @@ function uuid() {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* sem vibração */ } }
+
+window.addEventListener('error', (e) => { try { toast('Erro: ' + (e.message || 'desconhecido'), 'erro'); } catch (x) { alert('Erro: ' + e.message); } });
+window.addEventListener('unhandledrejection', (e) => { try { toast('Erro: ' + ((e.reason && e.reason.message) || e.reason || 'desconhecido'), 'erro'); } catch (x) { /* */ } });
 
 /* ---------- IndexedDB ---------- */
 let db;
@@ -171,8 +180,8 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-ir]');
   if (b) { e.preventDefault(); ir(b.dataset.ir); }
 });
-$('#btnVoltar').addEventListener('click', () => history.length > 1 ? history.back() : ir('inicio'));
-$('#topoStatus').addEventListener('click', () => ir('sync'));
+on('#btnVoltar', 'click', () => history.length > 1 ? history.back() : ir('inicio'));
+on('#topoStatus', 'click', () => ir('sync'));
 
 /* ---------- Aviso (toast) ---------- */
 let toastTimer;
@@ -291,10 +300,10 @@ async function abrirLeitor() {
     erroLeitor((msgs[e && e.name] || 'Não foi possível abrir a câmera.') + (e && e.name && !msgs[e.name] ? ' (' + e.name + ')' : ''));
   }
 }
-$('#btnTentarCamera').addEventListener('click', () => { pararCamera(); abrirLeitor(); });
+on('#btnTentarCamera', 'click', () => { pararCamera(); abrirLeitor(); });
 
 // Plano B: tira uma foto com a câmera do celular e lê o QR Code da foto
-$('#fotoQR').addEventListener('change', async (e) => {
+on('#fotoQR', 'change', async (e) => {
   const arq = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!arq) return;
@@ -362,7 +371,7 @@ function aoLer(texto) {
   $('.camera').classList.add('lido');
   abrirParticipante(id);
 }
-$('#formManual').addEventListener('submit', (e) => {
+on('#formManual', 'submit', (e) => {
   e.preventDefault();
   const v = $('#codigoManual').value.trim();
   if (!v) return;
@@ -459,14 +468,14 @@ function renderHistorico(p) {
       ${desfeito ? '' : `<button class="btn" data-desfazer="${esc(c.idRegistro)}">Desfazer</button>`}</li>`;
   }).join('');
 }
-$('#hist').addEventListener('click', async (e) => {
+on('#hist', 'click', async (e) => {
   const b = e.target.closest('[data-desfazer]');
   if (!b) return;
   const reg = S.consumos.find((c) => c.idRegistro === b.dataset.desfazer);
   if (reg && await confirmar('Desfazer retirada?', `${reg.produto} às ${hora(reg.dataHora)} volta para o saldo.`, 'Desfazer')) desfazer(reg);
 });
 
-$('#grade').addEventListener('click', (e) => {
+on('#grade', 'click', (e) => {
   const tile = e.target.closest('[data-prod]');
   if (tile) registrar(tile.dataset.prod);
 });
@@ -525,7 +534,7 @@ async function confirmarEntrada() {
 }
 
 /* ---------- Editar cadastro ---------- */
-$('#btnEditar').addEventListener('click', () => {
+on('#btnEditar', 'click', () => {
   const p = S.participantes.get(S.atual);
   if (!p) return;
   const opt = (obj, atual) => Object.entries(obj).map(([v, t]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${t}</option>`).join('');
@@ -613,7 +622,7 @@ function abrirCadastro() {
   preencherColaboradores();
 }
 
-$('#formCadastro').addEventListener('submit', async (e) => {
+on('#formCadastro', 'submit', async (e) => {
   e.preventDefault();
   const nome = $('#cadNome').value.trim().replace(/\s+/g, ' ');
   if (nome.length < 3) { toast('Informe o nome completo.', 'erro'); return; }
@@ -668,7 +677,7 @@ function mostrarResultadoCadastro(p) {
 /* ==========================================================================
    LISTA
    ========================================================================== */
-$('#busca').addEventListener('input', renderLista);
+on('#busca', 'input', renderLista);
 ligarSeg('#filtroStatus', renderLista);
 function renderLista() {
   const q = norm($('#busca').value);
@@ -683,7 +692,7 @@ function renderLista() {
       <span class="tag ${p.status}">${STATUS_NOME[p.status]}</span>
     </li>`).join('') : '<li class="vazio">Nenhum participante encontrado. Baixe a lista em Sincronização.</li>';
 }
-$('#lista').addEventListener('click', (e) => { const li = e.target.closest('[data-id]'); if (li) abrirParticipante(li.dataset.id); });
+on('#lista', 'click', (e) => { const li = e.target.closest('[data-id]'); if (li) abrirParticipante(li.dataset.id); });
 
 /* ==========================================================================
    RELATÓRIO E EXPORTAÇÃO CSV
@@ -708,7 +717,7 @@ function renderRelatorio() {
   const total = `<tr class="total"><td>Total</td><td></td>${prods.map((p) => `<td>${t[norm(p.nome)] || 0}</td>`).join('')}</tr>`;
   $('#relTabela').innerHTML = cab + `<tbody>${linhas || `<tr><td colspan="${prods.length + 2}">Nenhum consumo registrado.</td></tr>`}${linhas ? total : ''}</tbody>`;
 }
-$('#relTabela').addEventListener('click', (e) => { const tr = e.target.closest('[data-id]'); if (tr) abrirParticipante(tr.dataset.id); });
+on('#relTabela', 'click', (e) => { const tr = e.target.closest('[data-id]'); if (tr) abrirParticipante(tr.dataset.id); });
 
 function baixarCSV(nome, linhas) {
   const csv = '\ufeff' + linhas.map((l) => l.map((v) => {
@@ -721,7 +730,7 @@ function baixarCSV(nome, linhas) {
   toast('Pronto! Arquivo salvo em Downloads.');
 }
 const carimbo = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-$('#btnCsvResumo').addEventListener('click', () => {
+on('#btnCsvResumo', 'click', () => {
   const prods = produtosAtivos();
   const linhas = [['CODIGO', 'NOME', 'TIPO', 'RESPONSAVEL', 'STATUS', ...prods.flatMap((p) => [p.nome.toUpperCase() + ' RETIRADOS', p.nome.toUpperCase() + ' SALDO'])]];
   Array.from(S.participantes.values()).sort((a, b) => numDe(a.id) - numDe(b.id)).forEach((p) => {
@@ -729,7 +738,7 @@ $('#btnCsvResumo').addEventListener('click', () => {
   });
   baixarCSV(`presto-resumo-${carimbo()}.csv`, linhas);
 });
-$('#btnCsvRegistros').addEventListener('click', () => {
+on('#btnCsvRegistros', 'click', () => {
   const linhas = [['ID_REGISTRO', 'CODIGO', 'NOME', 'PRODUTO', 'QUANTIDADE', 'DATA_HORA']];
   S.consumos.forEach((c) => linhas.push([c.idRegistro, c.id, (S.participantes.get(c.id) || {}).nome || '', c.produto, c.qtd, new Date(c.dataHora).toLocaleString('pt-BR')]));
   baixarCSV(`presto-registros-${carimbo()}.csv`, linhas);
@@ -880,7 +889,7 @@ async function renderSync() {
     ${S.cfg.resultadoEnvio ? `<dt>Resultado</dt><dd style="text-align:left;font-weight:500">${esc(S.cfg.resultadoEnvio)}</dd>` : ''}
     <dt>Lista baixada em</dt><dd>${dataHora(S.cfg.ultimaBaixa)}</dd>
     ${S.cfg.erroSync ? `<dt>Último erro</dt><dd class="st-erro" style="text-align:left">${esc(S.cfg.erroSync)}</dd>` : ''}`;
-  $('#btnSincronizar').disabled = $('#btnBaixar').disabled = $('#btnReenviar').disabled = S.sincronizando;
+  ['#btnSincronizar', '#btnBaixar', '#btnReenviar'].forEach((x) => { const b = $(x); if (b) b.disabled = S.sincronizando; });
   $('#btnSincronizar').textContent = S.sincronizando ? 'Sincronizando…' : 'Sincronizar agora';
   if (document.activeElement !== $('#cfgUrl')) $('#cfgUrl').value = S.cfg.url || '';
   if (document.activeElement !== $('#cfgToken')) $('#cfgToken').value = S.cfg.token || '';
@@ -924,9 +933,9 @@ async function renderChecklist() {
   };
 }
 
-$('#btnSincronizar').addEventListener('click', () => sincronizar());
-$('#btnBaixar').addEventListener('click', () => sincronizar({ soBaixar: true }));
-$('#btnReenviar').addEventListener('click', reenviarTudo);
+on('#btnSincronizar', 'click', () => sincronizar());
+on('#btnBaixar', 'click', () => sincronizar({ soBaixar: true }));
+on('#btnReenviar', 'click', reenviarTudo);
 function resultadoCfg(texto, tipo) {
   const el = $('#cfgResultado');
   el.hidden = false; el.className = 'cfg-resultado ' + (tipo || ''); el.textContent = texto;
@@ -958,16 +967,13 @@ async function salvarConfig() {
     renderChecklist();
   }
 }
-$('#btnSalvarConfig').addEventListener('click', salvarConfig);
-$('#formConfig').addEventListener('submit', (e) => { e.preventDefault(); salvarConfig(); });
+on('#btnSalvarConfig', 'click', salvarConfig);
+on('#formConfig', 'submit', (e) => { e.preventDefault(); salvarConfig(); });
 
-// Mostra qualquer erro inesperado na tela (ajuda a diagnosticar no celular)
-window.addEventListener('error', (e) => toast('Erro: ' + (e.message || 'desconhecido'), 'erro'));
-window.addEventListener('unhandledrejection', (e) => toast('Erro: ' + ((e.reason && e.reason.message) || e.reason || 'desconhecido'), 'erro'));
 ligarSeg('#segTema', async (v) => { await salvarCfg('tema', v); aplicarTema(); });
 function aplicarTema() { document.documentElement.dataset.theme = S.cfg.tema === 'dark' ? 'dark' : 'light'; }
 
-$('#btnApagar').addEventListener('click', async () => {
+on('#btnApagar', 'click', async () => {
   const pend = pendentesConsumo().length + pendentesCadastro().length;
   if (pend) { toast(`Há ${pend} itens não enviados. Sincronize antes de apagar.`, 'erro'); return; }
   const d = modal(`<h2>Apagar dados deste celular</h2>
