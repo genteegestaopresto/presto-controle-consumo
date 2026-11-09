@@ -6,7 +6,7 @@
    ========================================================================== */
 'use strict';
 
-const VERSAO_APP = '1.0.0';
+const VERSAO_APP = '1.2.0';
 
 // Limites padrão (usados só até a primeira sincronização; depois valem os da aba CONFIGURACOES)
 const PRODUTOS_PADRAO = [
@@ -244,20 +244,31 @@ async function abrirLeitor() {
   $('#leitorErro').hidden = true;
   $('#codigoManual').value = '';
   $('.camera').classList.remove('lido');
-  $('#cameraMsg').textContent = 'Aponte para o QR Code da pulseira';
+  $('#cameraMsg').textContent = 'Abrindo a câmera…';
   clearTimeout(scan.timerOcioso);
   try {
+    if (!window.isSecureContext) throw Object.assign(new Error('inseguro'), { name: 'Inseguro' });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('sem-api'), { name: 'SemApi' });
     if (!scan.stream) {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('sem-api');
-      scan.stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
+      // tenta do pedido mais completo ao mais simples (alguns aparelhos recusam resolução/câmera específica)
+      const tentativas = [
+        { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { audio: false, video: { facingMode: 'environment' } },
+        { audio: false, video: true }
+      ];
+      let ultimoErro;
+      for (const t of tentativas) {
+        try { scan.stream = await navigator.mediaDevices.getUserMedia(t); break; }
+        catch (e) { ultimoErro = e; if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; }
+      }
+      if (!scan.stream) throw ultimoErro || new Error('camera');
       const v = $('#video');
+      v.setAttribute('playsinline', ''); v.muted = true;
       v.srcObject = scan.stream;
-      await v.play();
+      try { await v.play(); } catch (e) { /* alguns aparelhos tocam sozinhos depois */ }
       pedirTelaAcesa();
     }
+    $('#cameraMsg').textContent = 'Aponte para o QR Code da pulseira';
     if (!scan.detector && 'BarcodeDetector' in window) {
       try {
         const formatos = await BarcodeDetector.getSupportedFormats();
@@ -267,12 +278,46 @@ async function abrirLeitor() {
     if (location.hash === '#leitor') { cancelAnimationFrame(scan.raf); scan.raf = requestAnimationFrame(loopLeitura); }
   } catch (e) {
     pararCamera();
-    const msg = (e && e.name === 'NotAllowedError')
-      ? 'A câmera foi bloqueada. Toque no cadeado ao lado do endereço, libere a câmera e volte aqui. Enquanto isso, digite o número da pulseira.'
-      : 'Não foi possível abrir a câmera. Digite o número da pulseira abaixo.';
-    erroLeitor(msg);
+    $('#cameraMsg').textContent = 'Câmera indisponível';
+    const msgs = {
+      NotAllowedError: 'A câmera está bloqueada para este app. Veja como liberar nas instruções e toque em "Abrir a câmera de novo". Enquanto isso, use "Ler por foto" ou digite o número.',
+      SecurityError: 'A câmera está bloqueada para este app. Libere a permissão e toque em "Abrir a câmera de novo".',
+      NotReadableError: 'A câmera está ocupada por outro aplicativo. Feche os outros apps (câmera, WhatsApp) e toque em "Abrir a câmera de novo".',
+      NotFoundError: 'Nenhuma câmera encontrada. Use "Ler por foto" ou digite o número.',
+      OverconstrainedError: 'A câmera não aceitou a configuração. Toque em "Abrir a câmera de novo" ou use "Ler por foto".',
+      Inseguro: 'O app precisa ser aberto pelo endereço https://genteestaopresto.github.io/presto-controle-consumo/ para usar a câmera.',
+      SemApi: 'Este navegador não libera a câmera. Abra o app pelo Google Chrome (não pelo link do WhatsApp) ou use "Ler por foto".'
+    };
+    erroLeitor((msgs[e && e.name] || 'Não foi possível abrir a câmera.') + (e && e.name && !msgs[e.name] ? ' (' + e.name + ')' : ''));
   }
 }
+$('#btnTentarCamera').addEventListener('click', () => { pararCamera(); abrirLeitor(); });
+
+// Plano B: tira uma foto com a câmera do celular e lê o QR Code da foto
+$('#fotoQR').addEventListener('change', async (e) => {
+  const arq = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!arq) return;
+  try {
+    const img = await createImageBitmap(arq);
+    const max = 1200, f = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * f); c.height = Math.round(img.height * f);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    let texto = null;
+    if ('BarcodeDetector' in window) {
+      try { const r = await new BarcodeDetector({ formats: ['qr_code'] }).detect(c); if (r.length) texto = r[0].rawValue; } catch (er) { /* usa jsQR */ }
+    }
+    if (!texto && typeof jsQR === 'function') {
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const r = jsQR(d.data, c.width, c.height, { inversionAttempts: 'attemptBoth' });
+      if (r) texto = r.data;
+    }
+    if (texto) aoLer(texto);
+    else { vibrar([90, 60, 90]); erroLeitor('Não encontrei QR Code na foto. Tire outra mais de perto, com o QR Code inteiro e nítido.'); }
+  } catch (er) { erroLeitor('Não foi possível ler a foto. Tente de novo.'); }
+});
 function erroLeitor(msg) { const el = $('#leitorErro'); el.textContent = msg; el.hidden = false; }
 
 async function loopLeitura() {
@@ -809,11 +854,29 @@ async function renderChecklist() {
   let camera = false;
   try { camera = (await navigator.permissions.query({ name: 'camera' })).state === 'granted'; } catch (e) { /* */ }
   itens.push([camera, camera ? 'Câmera liberada' : 'Abra o leitor uma vez e permita a câmera']);
+  // Espaço: o que realmente importa para não perder registros
+  let espacoOk = true, espacoTxt = 'Espaço de armazenamento suficiente';
+  try {
+    const est = await navigator.storage.estimate();
+    const livreMB = Math.round(((est.quota || 0) - (est.usage || 0)) / 1048576);
+    espacoOk = livreMB > 200;
+    espacoTxt = espacoOk ? 'Espaço de armazenamento suficiente' : 'Pouco espaço livre no celular. Apague fotos ou vídeos antes do evento';
+  } catch (e) { /* navegador sem estimativa */ }
+  itens.push([espacoOk, espacoTxt]);
+  itens.push([pendentesConsumo().length + pendentesCadastro().length === 0, 'Nada pendente de envio']);
   let protegido = false;
   try { protegido = await navigator.storage?.persisted?.(); } catch (e) { /* */ }
-  itens.push([!!protegido, protegido ? 'Dados protegidos contra limpeza automática' : 'Instale o app na tela inicial para proteger os dados']);
-  itens.push([pendentesConsumo().length + pendentesCadastro().length === 0, 'Nada pendente de envio']);
-  $('#checklist').innerHTML = itens.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}"><span class="ic">${ok ? '✓' : '!'}</span><span>${esc(t)}</span></li>`).join('');
+  $('#checklist').innerHTML = itens.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}"><span class="ic">${ok ? '✓' : '!'}</span><span>${esc(t)}</span></li>`).join('') +
+    `<li class="${protegido ? 'ok' : 'info'}"><span class="ic">${protegido ? '✓' : 'i'}</span><span>${protegido
+      ? 'Proteção extra do Chrome ativada'
+      : 'Proteção extra do Chrome: opcional, o Chrome decide quando ativar. <button class="btn fantasma" id="btnPersistir" type="button">Pedir agora</button>'}</span></li>`;
+  const bp = $('#btnPersistir');
+  if (bp) bp.onclick = async () => {
+    let ok = false;
+    try { ok = await navigator.storage.persist(); } catch (e) { /* */ }
+    toast(ok ? 'Pronto! Proteção extra ativada.' : 'O Chrome ainda não liberou. Os dados continuam salvos normalmente.', ok ? 'ok' : 'erro');
+    renderChecklist();
+  };
 }
 
 $('#btnSincronizar').addEventListener('click', () => sincronizar());

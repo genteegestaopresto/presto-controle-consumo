@@ -242,3 +242,6 @@ table.t { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 359px) { .kpi .v, .item .disp b, .totais .v { font-size: 22px; } .topo-app { display: none; } }
+.leitor-alt .btn { flex: 1; }
+.checklist .info .ic { background: var(--texto-suave); }
+.checklist .btn.fantasma { min-height: 0; padding: 0 0 0 4px; font-size: 14px; }

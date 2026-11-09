@@ -1,6 +1,6 @@
 /* Service worker: guarda todos os arquivos do app no celular para funcionar sem internet.
    Ao publicar uma nova versão, aumente o número em VERSAO. */
-const VERSAO = 'presto-consumo-v1';
+const VERSAO = 'presto-consumo-v3';
 const ARQUIVOS = [
   './', 'index.html', 'styles.css', 'app.js', 'jsQR.js', 'qrcode.js', 'manifest.json',
   'logo-branco.png', 'icon-192.png', 'icon-512.png',
