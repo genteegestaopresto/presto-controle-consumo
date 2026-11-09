@@ -6,7 +6,7 @@
    ========================================================================== */
 'use strict';
 
-const VERSAO_APP = '1.2.0';
+const VERSAO_APP = '1.3.0';
 
 // Limites padrão (usados só até a primeira sincronização; depois valem os da aba CONFIGURACOES)
 const PRODUTOS_PADRAO = [
@@ -285,7 +285,7 @@ async function abrirLeitor() {
       NotReadableError: 'A câmera está ocupada por outro aplicativo. Feche os outros apps (câmera, WhatsApp) e toque em "Abrir a câmera de novo".',
       NotFoundError: 'Nenhuma câmera encontrada. Use "Ler por foto" ou digite o número.',
       OverconstrainedError: 'A câmera não aceitou a configuração. Toque em "Abrir a câmera de novo" ou use "Ler por foto".',
-      Inseguro: 'O app precisa ser aberto pelo endereço https://genteestaopresto.github.io/presto-controle-consumo/ para usar a câmera.',
+      Inseguro: 'O app precisa ser aberto pelo endereço https://genteegestaopresto.github.io/presto-controle-consumo/ para usar a câmera.',
       SemApi: 'Este navegador não libera a câmera. Abra o app pelo Google Chrome (não pelo link do WhatsApp) ou use "Ler por foto".'
     };
     erroLeitor((msgs[e && e.name] || 'Não foi possível abrir a câmera.') + (e && e.name && !msgs[e.name] ? ' (' + e.name + ')' : ''));
@@ -728,7 +728,7 @@ async function chamarApi(acao, dados = {}) {
     });
     const texto = await r.text();
     let j;
-    try { j = JSON.parse(texto); } catch (e) { throw new Error('O Apps Script não respondeu como esperado. Confira o endereço (termina em /exec) e se a implantação está com acesso "Qualquer pessoa".'); }
+    try { j = JSON.parse(texto); } catch (e) { throw new Error(/accounts\.google|ServiceLogin|<html/i.test(texto) ? 'O Google pediu login: a implantação não está aberta. Em Implantar → Gerenciar implantações → lápis, deixe "Quem pode acessar: Qualquer pessoa" e implante uma nova versão.' : 'O Apps Script não respondeu como esperado. Confira se o endereço termina em /exec.'); }
     if (!j.ok) throw new Error(j.erro || 'Erro no Apps Script.');
     return j;
   } catch (e) {
@@ -881,19 +881,43 @@ async function renderChecklist() {
 
 $('#btnSincronizar').addEventListener('click', () => sincronizar());
 $('#btnBaixar').addEventListener('click', () => sincronizar({ soBaixar: true }));
-$('#formConfig').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const url = $('#cfgUrl').value.trim();
-  const token = $('#cfgToken').value.trim();
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) { toast('O endereço precisa começar com https://script.google.com/macros/s/ e terminar em /exec.', 'erro'); return; }
-  if (token.length < 16) { toast('Chave de acesso inválida.', 'erro'); return; }
-  await salvarCfg('url', url); await salvarCfg('token', token);
+function resultadoCfg(texto, tipo) {
+  const el = $('#cfgResultado');
+  el.hidden = false; el.className = 'cfg-resultado ' + (tipo || ''); el.textContent = texto;
+}
+async function salvarConfig() {
+  const btn = $('#btnSalvarConfig');
+  // limpa espaços e quebras que o teclado do celular costuma inserir ao colar
+  const url = $('#cfgUrl').value.replace(/\s+/g, '').replace(/^http:/i, 'https:').replace(/^https:/i, 'https:');
+  const token = $('#cfgToken').value.replace(/\s+/g, '');
+  $('#cfgUrl').value = url; $('#cfgToken').value = token;
+  if (!/^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[^/]+\/exec$/i.test(url)) {
+    resultadoCfg('Endereço inválido. Ele precisa começar com https://script.google.com/ e terminar em /exec. Copie de novo em Implantar → Gerenciar implantações.', 'erro');
+    return;
+  }
+  if (token.length < 16) { resultadoCfg('Chave de acesso incompleta. Copie de novo pela função mostrarTokenPresto.', 'erro'); return; }
+  btn.disabled = true; btn.textContent = 'Testando…';
+  resultadoCfg('Testando a conexão com a planilha…', '');
   try {
+    await salvarCfg('url', url); await salvarCfg('token', token);
     const r = await chamarApi('ping');
-    toast(`Pronto! Conectado à planilha ${r.planilha || ''}.`);
-    sincronizar({ silencioso: false, soBaixar: S.participantes.size === 0 });
-  } catch (err) { toast(err.message, 'erro'); }
-});
+    resultadoCfg(`Pronto! Conectado à planilha ${r.planilha || ''}. Baixando a lista…`, 'ok');
+    await sincronizar({ silencioso: true, soBaixar: S.participantes.size === 0 });
+    resultadoCfg(S.cfg.erroSync ? 'Conectado, mas a lista não baixou: ' + S.cfg.erroSync
+      : `Pronto! Conectado e ${S.participantes.size} participantes salvos no celular.`, S.cfg.erroSync ? 'erro' : 'ok');
+  } catch (err) {
+    resultadoCfg(err.message || String(err), 'erro');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Salvar e testar';
+    renderChecklist();
+  }
+}
+$('#btnSalvarConfig').addEventListener('click', salvarConfig);
+$('#formConfig').addEventListener('submit', (e) => { e.preventDefault(); salvarConfig(); });
+
+// Mostra qualquer erro inesperado na tela (ajuda a diagnosticar no celular)
+window.addEventListener('error', (e) => toast('Erro: ' + (e.message || 'desconhecido'), 'erro'));
+window.addEventListener('unhandledrejection', (e) => toast('Erro: ' + ((e.reason && e.reason.message) || e.reason || 'desconhecido'), 'erro'));
 ligarSeg('#segTema', async (v) => { await salvarCfg('tema', v); aplicarTema(); });
 function aplicarTema() { document.documentElement.dataset.theme = S.cfg.tema === 'dark' ? 'dark' : 'light'; }
 

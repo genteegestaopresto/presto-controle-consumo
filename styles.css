@@ -245,3 +245,6 @@ table.t { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 
 .leitor-alt .btn { flex: 1; }
 .checklist .info .ic { background: var(--texto-suave); }
 .checklist .btn.fantasma { min-height: 0; padding: 0 0 0 4px; font-size: 14px; }
+.cfg-resultado { border-left: 4px solid var(--linha); background: var(--superficie-2); border-radius: var(--raio); padding: 10px 12px; font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.cfg-resultado.ok { border-color: var(--verde); color: var(--verde-texto); }
+.cfg-resultado.erro { border-color: var(--negativo); color: var(--negativo); }

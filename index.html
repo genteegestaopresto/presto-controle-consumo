@@ -61,6 +61,7 @@
 
 <!-- ============ LEITOR ============ -->
 <section class="tela" id="tela-leitor" hidden>
+  <div class="aviso-erro" id="leitorErro" hidden></div>
   <div class="camera">
     <video id="video" playsinline muted></video>
     <div class="mira"><span></span></div>
@@ -74,7 +75,11 @@
       <button class="btn primario" type="submit">Abrir</button>
     </form>
   </div>
-  <div class="aviso-erro" id="leitorErro" hidden></div>
+  <div class="botoes-linha leitor-alt">
+    <button class="btn" id="btnTentarCamera">Abrir a câmera de novo</button>
+    <label class="btn" for="fotoQR">Ler por foto</label>
+    <input id="fotoQR" type="file" accept="image/*" capture="environment" hidden>
+  </div>
 </section>
 
 <!-- ============ PARTICIPANTE ============ -->
@@ -171,12 +176,13 @@
     <ul class="checklist" id="checklist"></ul>
   </div>
 
-  <form class="painel form" id="formConfig" autocomplete="off">
+  <form class="painel form" id="formConfig" autocomplete="off" onsubmit="return false" novalidate>
     <div class="painel-titulo"><h2>Conexão com a planilha</h2></div>
-    <label>Endereço do Apps Script<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></label>
-    <label>Chave de acesso<input id="cfgToken" type="password" autocomplete="new-password"></label>
+    <label>Endereço do Apps Script<input id="cfgUrl" type="text" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec"></label>
+    <label>Chave de acesso<input id="cfgToken" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"></label>
     <p class="apoio">Ficam salvos só neste celular. Não aparecem no código público.</p>
-    <button class="btn primario" type="submit">Salvar e testar</button>
+    <button class="btn primario" type="button" id="btnSalvarConfig">Salvar e testar</button>
+    <div class="cfg-resultado" id="cfgResultado" hidden></div>
   </form>
 
   <div class="painel">
