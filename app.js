@@ -6,7 +6,7 @@
    ========================================================================== */
 'use strict';
 
-const VERSAO_APP = '1.3.0';
+const VERSAO_APP = '1.5.0';
 
 // Limites padrão (usados só até a primeira sincronização; depois valem os da aba CONFIGURACOES)
 const PRODUTOS_PADRAO = [
@@ -599,23 +599,26 @@ $('#formCadastro').addEventListener('submit', async (e) => {
   if (nome.length < 3) { toast('Informe o nome completo.', 'erro'); return; }
   const id = idDe($('#cadCodigo').value);
   if (!id) { toast('Código inválido. Use o formato PST-121.', 'erro'); return; }
-  if (S.participantes.has(id)) {
-    const outro = S.participantes.get(id);
-    toast(`${id} já pertence a ${outro.nome || 'outro participante'}.`, 'erro');
+  // Pulseira já existe no sistema, mas ainda sem nome (ex.: PST-001 a PST-120): usa ela
+  let existente = S.participantes.get(id);
+  if (existente && existente.nome && existente.status !== 'CANCELADO') {
+    toast(`${id} já pertence a ${existente.nome}.`, 'erro');
     return;
   }
   const dup = duplicadoPorNome(nome);
   if (dup && !(await confirmar('Pessoa já cadastrada?', `Já existe ${dup.nome} com a pulseira ${dup.id} (${STATUS_NOME[dup.status]}). Cadastrar outra pulseira mesmo assim?`, 'Cadastrar mesmo assim'))) {
     return;
   }
+  if (existente && existente.status === 'CANCELADO' && existente.nome &&
+      !(await confirmar('Pulseira cancelada', `${id} estava com ${existente.nome} (cancelado). Passar a pulseira para ${nome}?`, 'Passar pulseira'))) return;
   const tipo = segValor('#cadTipo');
-  const p = {
-    id, codigo: pad3(numDe(id)), nome, tipo,
+  const p = Object.assign(existente || { id, codigo: pad3(numDe(id)), dataCadastro: new Date().toISOString(), novo: 1 }, {
+    nome, tipo,
     responsavel: tipo === 'CONVIDADO' ? $('#cadResp').value.trim() : '',
     status: segValor('#cadStatus'),
-    dataCadastro: new Date().toISOString(), atualizadoEm: new Date().toISOString(),
-    pendente: 1, novo: 1
-  };
+    atualizadoEm: new Date().toISOString(),
+    pendente: 1
+  });
   await gravar('participantes', p);
   S.participantes.set(id, p);
   atualizarStatus();
@@ -763,12 +766,14 @@ async function enviarPendencias() {
   const consumos = pendentesConsumo();
   if (!cadastros.length && !consumos.length) return;
   const LOTE = 250;
+  let gravados = 0, jaExistiam = 0;
   for (let i = 0; i < Math.max(consumos.length, 1); i += LOTE) {
     const lote = consumos.slice(i, i + LOTE);
     const r = await chamarApi('enviar', {
       participantes: i === 0 ? cadastros.map((p) => ({ id: p.id, codigo: p.codigo || pad3(numDe(p.id)), nome: p.nome, tipo: p.tipo, responsavel: p.responsavel, status: p.status, dataCadastro: p.dataCadastro, novo: !!p.novo })) : [],
       consumos: lote.map((c) => ({ idRegistro: c.idRegistro, id: c.id, produto: c.produto, qtd: c.qtd, dataHora: c.dataHora }))
     });
+    gravados += Number(r.gravados || 0); jaExistiam += Number(r.ignoradosDuplicados || 0);
     // marca como enviados somente os que a planilha confirmou
     const confirmados = new Set(r.idsConfirmados || []);
     const marcados = lote.filter((c) => confirmados.has(c.idRegistro));
@@ -782,6 +787,25 @@ async function enviarPendencias() {
     }
   }
   await salvarCfg('ultimoEnvio', new Date().toISOString());
+  await salvarCfg('resultadoEnvio', `${gravados} retiradas novas gravadas, ${jaExistiam} já estavam na planilha, ${cadastros.length} cadastros atualizados`);
+}
+
+/**
+ * Reenvia tudo o que está no celular. Seguro: a planilha ignora o que já tem (pelo ID_REGISTRO).
+ * Útil se linhas forem apagadas da planilha por engano.
+ */
+async function reenviarTudo() {
+  if (!(await confirmar('Reenviar tudo para a planilha?',
+    'Todas as retiradas e as entradas confirmadas deste celular serão enviadas de novo. O que já está na planilha não é duplicado.', 'Reenviar tudo'))) return;
+  const cons = S.consumos.filter((c) => c.sincronizado);
+  cons.forEach((c) => { c.sincronizado = 0; });
+  if (cons.length) await gravar('consumos', cons);
+  // participantes alterados no celular: presentes, cancelados e extras
+  const parts = Array.from(S.participantes.values()).filter((p) => !p.pendente && (p.status !== 'DISPONIVEL' || numDe(p.id) > 120));
+  parts.forEach((p) => { p.pendente = 1; });
+  if (parts.length) await gravar('participantes', parts);
+  atualizarStatus(); renderSyncSeAberta();
+  await sincronizar();
 }
 
 async function baixarDados() {
@@ -833,9 +857,10 @@ async function renderSync() {
     <dt>Retiradas a enviar</dt><dd>${pc}</dd>
     <dt>Cadastros a enviar</dt><dd>${pp}</dd>
     <dt>Último envio</dt><dd>${dataHora(S.cfg.ultimoEnvio)}</dd>
+    ${S.cfg.resultadoEnvio ? `<dt>Resultado</dt><dd style="text-align:left;font-weight:500">${esc(S.cfg.resultadoEnvio)}</dd>` : ''}
     <dt>Lista baixada em</dt><dd>${dataHora(S.cfg.ultimaBaixa)}</dd>
     ${S.cfg.erroSync ? `<dt>Último erro</dt><dd class="st-erro" style="text-align:left">${esc(S.cfg.erroSync)}</dd>` : ''}`;
-  $('#btnSincronizar').disabled = $('#btnBaixar').disabled = S.sincronizando;
+  $('#btnSincronizar').disabled = $('#btnBaixar').disabled = $('#btnReenviar').disabled = S.sincronizando;
   $('#btnSincronizar').textContent = S.sincronizando ? 'Sincronizando…' : 'Sincronizar agora';
   if (document.activeElement !== $('#cfgUrl')) $('#cfgUrl').value = S.cfg.url || '';
   if (document.activeElement !== $('#cfgToken')) $('#cfgToken').value = S.cfg.token || '';
@@ -881,6 +906,7 @@ async function renderChecklist() {
 
 $('#btnSincronizar').addEventListener('click', () => sincronizar());
 $('#btnBaixar').addEventListener('click', () => sincronizar({ soBaixar: true }));
+$('#btnReenviar').addEventListener('click', reenviarTudo);
 function resultadoCfg(texto, tipo) {
   const el = $('#cfgResultado');
   el.hidden = false; el.className = 'cfg-resultado ' + (tipo || ''); el.textContent = texto;
