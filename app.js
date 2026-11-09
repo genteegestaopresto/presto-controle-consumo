@@ -6,7 +6,7 @@
    ========================================================================== */
 'use strict';
 
-const VERSAO_APP = '1.5.0';
+const VERSAO_APP = '1.6.0';
 
 // Limites padrão (usados só até a primeira sincronização; depois valem os da aba CONFIGURACOES)
 const PRODUTOS_PADRAO = [
@@ -536,9 +536,11 @@ $('#btnEditar').addEventListener('click', () => {
       <label>Colaborador responsável<input name="responsavel" list="listaColab" value="${esc(p.responsavel)}"></label>
       <label>Situação<select name="status">${opt(STATUS_NOME, p.status)}</select></label>
       <div class="botoes-linha"><button type="button" class="btn" id="edCancelar">Cancelar</button><button class="btn primario">Salvar</button></div>
+      <button type="button" class="btn perigo" id="edLiberar">Apagar cadastro e liberar pulseira</button>
     </form>`);
   preencherColaboradores();
   $('#edCancelar').onclick = () => d.close();
+  $('#edLiberar').onclick = () => { d.close(); liberarPulseira(p); };
   d.onclick = null;
   $('#formEditar').onsubmit = async (e) => {
     e.preventDefault();
@@ -554,6 +556,24 @@ $('#btnEditar').addEventListener('click', () => {
     atualizarStatus();
   };
 });
+
+/** Apaga o nome, desfaz as retiradas e deixa a pulseira disponível de novo. */
+async function liberarPulseira(p) {
+  const abertas = S.consumos.filter((c) => c.id === p.id && c.qtd > 0 && !S.estornados.has(c.idRegistro));
+  const aviso = abertas.length ? ` As ${abertas.length} retiradas registradas também serão desfeitas.` : '';
+  if (!(await confirmar(`Apagar cadastro de ${p.id}?`, `${p.nome || 'O participante'} sai desta pulseira, que volta a ficar sem nome e disponível.${aviso}`, 'Apagar cadastro'))) return;
+  const agora = new Date().toISOString();
+  const estornos = abertas.map((c) => ({ idRegistro: 'EST-' + c.idRegistro, ref: c.idRegistro, id: c.id, produto: c.produto, qtd: -1, dataHora: agora, sincronizado: 0 }));
+  try {
+    if (estornos.length) await gravar('consumos', estornos);
+    Object.assign(p, { nome: '', tipo: 'COLABORADOR', responsavel: '', status: 'DISPONIVEL', pendente: 1, atualizadoEm: agora });
+    await gravar('participantes', p);
+  } catch (e) { toast('Não foi possível apagar. Tente de novo.', 'erro'); return; }
+  estornos.forEach((c) => { S.consumos.push(c); somarTotal(c); });
+  renderParticipante();
+  toast(`Pronto! ${p.id} está livre de novo.`);
+  atualizarStatus();
+}
 
 /* ==========================================================================
    CADASTRO DE PARTICIPANTE EXTRA
