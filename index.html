@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex, nofollow">
+<title>Presto · Controle de consumo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topo">
+  <button class="topo-voltar" id="btnVoltar" aria-label="Voltar" hidden>
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <img class="logo" src="logo-branco.png" alt="PRESTO">
+  <span class="topo-app">Controle de consumo</span>
+  <button class="topo-status" id="topoStatus" aria-label="Status de conexão e sincronização">
+    <span class="ponto" id="pontoConexao"></span><span id="textoPendentes"></span>
+  </button>
+</header>
+
+<main>
+
+<!-- ============ INÍCIO ============ -->
+<section class="tela" id="tela-inicio">
+  <div class="hero">
+    <h1>Festa de final de ano 2026</h1>
+    <p class="sub">28 de novembro, escuna na Lagoa da Conceição</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="l">Cadastrados</div><div class="v" id="kpiCadastrados">0</div></div>
+    <div class="kpi"><div class="l">Presentes</div><div class="v" id="kpiPresentes">0</div></div>
+    <div class="kpi"><div class="l">Itens entregues</div><div class="v" id="kpiItens">0</div></div>
+  </div>
+
+  <div class="status-linha">
+    <div><span class="rotulo">Conexão</span><strong id="stConexao">—</strong></div>
+    <div><span class="rotulo">Sincronização</span><strong id="stSync">—</strong></div>
+  </div>
+
+  <button class="btn-ler" data-ir="leitor">
+    <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M3 9V4h5M16 4h5v5M21 15v5h-5M8 20H3v-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M7 12h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    Ler QR Code
+  </button>
+
+  <nav class="menu">
+    <button data-ir="cadastro"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M3 20c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg>Cadastrar participante</button>
+    <button data-ir="lista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></svg>Lista de participantes</button>
+    <button data-ir="relatorio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Relatório de consumo</button>
+    <button data-ir="sync"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v3h3M4 13a8 8 0 0 0 14.6 4.5M20 20v-3h-3"/></svg>Sincronização</button>
+  </nav>
+
+  <p class="apoio rodape">Pronto! É Presto. <span id="versaoApp"></span></p>
+</section>
+
+<!-- ============ LEITOR ============ -->
+<section class="tela" id="tela-leitor" hidden>
+  <div class="camera">
+    <video id="video" playsinline muted></video>
+    <div class="mira"><span></span></div>
+    <div class="camera-msg" id="cameraMsg">Aponte para o QR Code da pulseira</div>
+  </div>
+  <div class="painel leitor-manual">
+    <label class="rotulo" for="codigoManual">Pulseira molhada ou ilegível? Digite o número</label>
+    <form id="formManual" class="linha-manual" autocomplete="off">
+      <span class="prefixo">PST-</span>
+      <input id="codigoManual" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="001">
+      <button class="btn primario" type="submit">Abrir</button>
+    </form>
+  </div>
+  <div class="aviso-erro" id="leitorErro" hidden></div>
+</section>
+
+<!-- ============ PARTICIPANTE ============ -->
+<section class="tela" id="tela-participante" hidden>
+  <div id="partCabecalho"></div>
+  <div id="partBanner"></div>
+  <div class="grade" id="grade"></div>
+  <div class="painel historico">
+    <div class="painel-titulo"><h2>Retiradas</h2><button class="btn fantasma" id="btnEditar">Editar cadastro</button></div>
+    <ul class="hist" id="hist"></ul>
+  </div>
+  <div class="barra-fixa">
+    <button class="btn primario grande" data-ir="leitor">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 9V4h5M16 4h5v5M21 15v5h-5M8 20H3v-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      Ler próxima pulseira
+    </button>
+  </div>
+</section>
+
+<!-- ============ CADASTRO ============ -->
+<section class="tela" id="tela-cadastro" hidden>
+  <div class="cab-pagina"><h1>Cadastrar participante</h1><p class="sub">Para quem chegou sem cadastro</p></div>
+  <form class="painel form" id="formCadastro" autocomplete="off">
+    <label>Nome completo<input id="cadNome" required minlength="3" autocapitalize="words"></label>
+    <div class="campo">
+      <span class="rotulo-campo">Tipo</span>
+      <div class="seg" id="cadTipo">
+        <button type="button" data-v="COLABORADOR" aria-pressed="true">Colaborador</button>
+        <button type="button" data-v="CONVIDADO" aria-pressed="false">Convidado ou acompanhante</button>
+      </div>
+    </div>
+    <label id="cadRespWrap" hidden>Colaborador responsável<input id="cadResp" list="listaColab" placeholder="Digite o nome ou o código"></label>
+    <datalist id="listaColab"></datalist>
+    <label>Código da pulseira<input id="cadCodigo" required></label>
+    <p class="apoio" id="cadCodigoDica"></p>
+    <div class="campo">
+      <span class="rotulo-campo">Situação</span>
+      <div class="seg" id="cadStatus">
+        <button type="button" data-v="ATIVO" aria-pressed="true">Presente agora</button>
+        <button type="button" data-v="DISPONIVEL" aria-pressed="false">Ainda não chegou</button>
+      </div>
+    </div>
+    <button class="btn primario grande" type="submit">Salvar cadastro</button>
+  </form>
+  <div class="painel resultado" id="cadResultado" hidden></div>
+</section>
+
+<!-- ============ LISTA ============ -->
+<section class="tela" id="tela-lista" hidden>
+  <div class="cab-pagina"><h1>Participantes</h1><p class="sub" id="listaContagem"></p></div>
+  <input class="busca" id="busca" type="search" placeholder="Buscar por nome ou código">
+  <div class="seg filtros" id="filtroStatus">
+    <button data-v="" aria-pressed="true">Todos</button>
+    <button data-v="ATIVO" aria-pressed="false">Presentes</button>
+    <button data-v="DISPONIVEL" aria-pressed="false">Disponíveis</button>
+    <button data-v="CANCELADO" aria-pressed="false">Cancelados</button>
+  </div>
+  <ul class="lista" id="lista"></ul>
+</section>
+
+<!-- ============ RELATÓRIO ============ -->
+<section class="tela" id="tela-relatorio" hidden>
+  <div class="cab-pagina"><h1>Relatório de consumo</h1><p class="sub" id="relSub"></p></div>
+  <div class="painel">
+    <div class="painel-titulo"><h2>Total distribuído</h2></div>
+    <div class="totais" id="relTotais"></div>
+  </div>
+  <div class="painel">
+    <div class="painel-titulo"><h2>Por participante</h2></div>
+    <div class="rolagem"><table class="t" id="relTabela"></table></div>
+  </div>
+  <div class="botoes-linha">
+    <button class="btn" id="btnCsvResumo">Exportar resumo (CSV)</button>
+    <button class="btn" id="btnCsvRegistros">Exportar registros (CSV)</button>
+    <button class="btn" data-ir="sync">Enviar para a planilha</button>
+  </div>
+</section>
+
+<!-- ============ SINCRONIZAÇÃO ============ -->
+<section class="tela" id="tela-sync" hidden>
+  <div class="cab-pagina"><h1>Sincronização</h1><p class="sub">Troca de dados com a planilha do Google</p></div>
+
+  <div class="painel">
+    <div class="painel-titulo"><h2>Situação</h2></div>
+    <dl class="dados" id="syncDados"></dl>
+    <div class="botoes-col">
+      <button class="btn primario grande" id="btnSincronizar">Sincronizar agora</button>
+      <button class="btn" id="btnBaixar">Só baixar a lista da planilha</button>
+    </div>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo"><h2>Pronto para o evento?</h2></div>
+    <ul class="checklist" id="checklist"></ul>
+  </div>
+
+  <form class="painel form" id="formConfig" autocomplete="off">
+    <div class="painel-titulo"><h2>Conexão com a planilha</h2></div>
+    <label>Endereço do Apps Script<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></label>
+    <label>Chave de acesso<input id="cfgToken" type="password" autocomplete="new-password"></label>
+    <p class="apoio">Ficam salvos só neste celular. Não aparecem no código público.</p>
+    <button class="btn primario" type="submit">Salvar e testar</button>
+  </form>
+
+  <div class="painel">
+    <div class="painel-titulo"><h2>Limites por pessoa</h2></div>
+    <ul class="limites" id="limites"></ul>
+    <p class="apoio">Para mudar, edite a aba CONFIGURACOES e toque em sincronizar.</p>
+  </div>
+
+  <div class="painel">
+    <div class="painel-titulo"><h2>Este celular</h2></div>
+    <div class="campo">
+      <span class="rotulo-campo">Tema</span>
+      <div class="seg" id="segTema">
+        <button type="button" data-v="light" aria-pressed="true">Claro</button>
+        <button type="button" data-v="dark" aria-pressed="false">Escuro</button>
+      </div>
+    </div>
+    <button class="btn perigo" id="btnApagar">Apagar dados deste celular</button>
+  </div>
+</section>
+
+</main>
+
+<dialog id="dlg" class="modal"></dialog>
+<div class="toast" id="toast" hidden><span id="toastTexto"></span><button id="toastAcao" hidden></button></div>
+
+<script src="jsQR.js"></script>
+<script src="qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
